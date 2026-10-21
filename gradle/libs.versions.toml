@@ -1,0 +1,12 @@
+[versions]
+lavalink-api = "4.2.2"
+lavalink-server = "4.2.2"
+spring-websocket = "6.1.9"
+jakarta-servlet = "6.0.0"
+
+[libraries]
+spring-websocket = { module = "org.springframework:spring-websocket", version.ref = "spring-websocket" }
+jakarta-servlet = { module = "jakarta.servlet:jakarta.servlet-api", version.ref = "jakarta-servlet" }
+
+[plugins]
+lavalink = { id = "dev.arbjerg.lavalink.gradle-plugin", version = "1.1.2" }
