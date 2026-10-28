@@ -11,13 +11,17 @@ For .NET bots, [Lavalink4NET.Fluxer](https://github.com/SylveonDeko/Lavalink4NET
 
 This plugin requires Lavalink `v4.2.2` or higher.
 
-Download the jar from the [releases](https://github.com/SylveonDeko/lavalink-fluxer-plugin/releases) and place it
-into your `plugins` folder, or build it yourself:
+Add it to your `application.yml` and Lavalink downloads it on startup. Replace x.y.z with the latest version number.
 
+```yaml
+lavalink:
+  plugins:
+    - dependency: "com.github.SylveonDeko:lavalink-fluxer-plugin:vx.y.z"
+      repository: "https://jitpack.io"
 ```
-./gradlew build
-cp build/libs/lavalink-fluxer-plugin-*.jar /path/to/lavalink/plugins/
-```
+
+Or download the jar from the [releases](https://github.com/SylveonDeko/lavalink-fluxer-plugin/releases) and place it
+into your `plugins` folder.
 
 ## API
 

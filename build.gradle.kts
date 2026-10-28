@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "tech.mewdeko"
-version = "0.1.0"
+version = "0.1.1"
 
 lavalinkPlugin {
     name = "fluxer-plugin"
