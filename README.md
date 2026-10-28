@@ -1,21 +1,58 @@
 # lavalink-fluxer-plugin
 
-Lavalink 4 plugin that lets Fluxer bots play Lavalink audio. Fluxer voice runs on LiveKit, which Lavalink cannot
-join, so the bot holds the voice connection and this plugin streams each player's audio to it.
+A Lavalink plugin for playing audio in [Fluxer](https://fluxer.app) voice channels.
 
-- `GET /v4/fluxer/audio` (WebSocket, headers `Authorization` and `User-Id`) sends one binary message per 20 ms
-  frame for every playing player of that user: the guild id as a big endian 64 bit integer, then 16 bit little
-  endian stereo PCM at 48 kHz, decoded from the player's Opus frames.
-- A player update whose `voice.endpoint` is `fluxer` has its `voice` field dropped, so Lavalink does not try to open
-  a Discord voice connection for it. Fluxer clients send that placeholder instead of a real voice server.
+Fluxer voice runs on LiveKit, which Lavalink can't connect to. The bot holds the voice connection itself and this
+plugin streams each player's audio to it. Discord bots can use the same node.
 
-Discord bots can share the node: their players keep their Opus output and their voice updates pass through unchanged.
-The client side is [Lavalink4NET.Fluxer](https://github.com/SylveonDeko/Lavalink4NET.Fluxer).
+For .NET bots, [Lavalink4NET.Fluxer](https://github.com/SylveonDeko/Lavalink4NET.Fluxer) is the client side.
 
-## Building
+## Lavalink Usage
+
+This plugin requires Lavalink `v4.2.2` or higher.
+
+Build the jar and place it into your `plugins` folder:
 
 ```
 ./gradlew build
+cp build/libs/lavalink-fluxer-plugin-*.jar /path/to/lavalink/plugins/
 ```
 
-Copy `build/libs/lavalink-fluxer-plugin-*.jar` into the node's `plugins` directory.
+## API
+
+### Player updates
+
+Send a player update with the placeholder voice server below. The plugin removes the `voice` field before Lavalink
+sees it, and Lavalink plays the track without opening a Discord voice connection.
+
+```json
+{
+  "voice": {
+    "token": "fluxer",
+    "endpoint": "fluxer",
+    "sessionId": "..."
+  }
+}
+```
+
+Updates with any other endpoint are left alone.
+
+### Audio stream
+
+```
+GET /v4/fluxer/audio
+```
+
+A WebSocket that sends the audio of every playing player owned by the connecting bot.
+
+| Header          | Value                       |
+|-----------------|-----------------------------|
+| `Authorization` | The node password           |
+| `User-Id`       | The bot's user id           |
+
+Each binary message is one 20 ms frame:
+
+| Bytes | Content                                          |
+|-------|--------------------------------------------------|
+| 0-7   | Guild id, 64 bit big endian                      |
+| 8-    | PCM, 16 bit little endian, stereo, 48 kHz        |
