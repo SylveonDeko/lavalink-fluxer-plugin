@@ -29,6 +29,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Streams each Fluxer player's audio as PCM to the bot that owns it, one binary message per 20 ms frame.
+ */
 @Component
 public class AudioStreamHandler extends AbstractWebSocketHandler implements DisposableBean {
 

@@ -15,9 +15,15 @@ import org.springframework.web.socket.server.HandshakeInterceptor;
 
 import java.util.Map;
 
+/**
+ * Registers the Fluxer audio WebSocket and checks the node password and bot id when a bot connects.
+ */
 @Configuration
 public class AudioStreamConfiguration implements WebSocketConfigurer {
 
+    /**
+     * The path bots open the audio WebSocket on.
+     */
     public static final String PATH = "/v4/fluxer/audio";
     static final String USER_ID = "fluxer.userId";
 
