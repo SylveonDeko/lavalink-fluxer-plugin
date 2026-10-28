@@ -1,5 +1,6 @@
 package tech.mewdeko.lavalink.fluxer;
 
+import com.sedmelluq.discord.lavaplayer.natives.opus.OpusDecoder;
 import com.sedmelluq.discord.lavaplayer.track.playback.AudioFrame;
 import dev.arbjerg.lavalink.api.IPlayer;
 import dev.arbjerg.lavalink.api.ISocketContext;
@@ -17,7 +18,12 @@ import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorato
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.ShortBuffer;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -33,6 +39,7 @@ public class AudioStreamHandler extends AbstractWebSocketHandler implements Disp
 
     private final ISocketServer socketServer;
     private final Map<Long, WebSocketSession> streams = new ConcurrentHashMap<>();
+    private final Map<PlayerKey, PcmDecoder> decoders = new HashMap<>();
     private final ScheduledExecutorService ticker = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "fluxer-audio");
         thread.setDaemon(true);
@@ -46,8 +53,11 @@ public class AudioStreamHandler extends AbstractWebSocketHandler implements Disp
     }
 
     @Override
-    public void destroy() {
+    public void destroy() throws InterruptedException {
         ticker.shutdownNow();
+        ticker.awaitTermination(1, TimeUnit.SECONDS);
+        decoders.values().forEach(PcmDecoder::close);
+        decoders.clear();
     }
 
     @Override
@@ -81,32 +91,45 @@ public class AudioStreamHandler extends AbstractWebSocketHandler implements Disp
 
     private void tick() {
         try {
-            if (streams.isEmpty()) {
-                return;
+            Set<PlayerKey> active = new HashSet<>();
+            if (!streams.isEmpty()) {
+                for (ISocketContext context : socketServer.getSessions().values()) {
+                    WebSocketSession stream = streams.get(context.getUserId());
+                    if (stream == null || !stream.isOpen()) {
+                        continue;
+                    }
+
+                    for (IPlayer player : context.getPlayers().values()) {
+                        PlayerKey key = new PlayerKey(context.getUserId(), player.getGuildId());
+                        active.add(key);
+                        send(stream, player, decoders.computeIfAbsent(key, k -> new PcmDecoder()));
+                    }
+                }
             }
 
-            for (ISocketContext context : socketServer.getSessions().values()) {
-                WebSocketSession stream = streams.get(context.getUserId());
-                if (stream == null || !stream.isOpen()) {
-                    continue;
+            decoders.entrySet().removeIf(entry -> {
+                if (active.contains(entry.getKey())) {
+                    return false;
                 }
-
-                for (IPlayer player : context.getPlayers().values()) {
-                    send(stream, player);
-                }
-            }
+                entry.getValue().close();
+                return true;
+            });
         } catch (Throwable e) {
             log.error("Audio stream tick failed", e);
         }
     }
 
-    private static void send(WebSocketSession stream, IPlayer player) {
+    private static void send(WebSocketSession stream, IPlayer player, PcmDecoder decoder) {
         AudioFrame frame = player.getAudioPlayer().provide();
         if (frame == null) {
             return;
         }
 
-        byte[] data = frame.getData();
+        byte[] data = decoder.decode(frame.getData());
+        if (data.length == 0) {
+            return;
+        }
+
         ByteBuffer message = ByteBuffer.allocate(Long.BYTES + data.length);
         message.putLong(player.getGuildId());
         message.put(data);
@@ -116,6 +139,45 @@ public class AudioStreamHandler extends AbstractWebSocketHandler implements Disp
             stream.sendMessage(new BinaryMessage(message));
         } catch (IOException | IllegalStateException e) {
             log.debug("Dropped an audio frame for guild {}", Long.toUnsignedString(player.getGuildId()), e);
+        }
+    }
+
+    private record PlayerKey(long userId, long guildId) {
+    }
+
+    private static final class PcmDecoder implements AutoCloseable {
+
+        private static final int SAMPLE_RATE = 48000;
+        private static final int CHANNELS = 2;
+        private static final int MAX_SAMPLES_PER_CHANNEL = SAMPLE_RATE * 120 / 1000;
+
+        private final OpusDecoder decoder = new OpusDecoder(SAMPLE_RATE, CHANNELS);
+        private final ByteBuffer input = ByteBuffer.allocateDirect(4096);
+        private final ShortBuffer output = ByteBuffer.allocateDirect(MAX_SAMPLES_PER_CHANNEL * CHANNELS * Short.BYTES)
+                .order(ByteOrder.nativeOrder()).asShortBuffer();
+
+        byte[] decode(byte[] opus) {
+            input.clear();
+            input.put(opus);
+            input.flip();
+
+            try {
+                decoder.decode(input, output);
+            } catch (IllegalStateException e) {
+                log.debug("Could not decode an Opus frame", e);
+                return new byte[0];
+            }
+
+            ByteBuffer pcm = ByteBuffer.allocate(output.remaining() * Short.BYTES).order(ByteOrder.LITTLE_ENDIAN);
+            while (output.hasRemaining()) {
+                pcm.putShort(output.get());
+            }
+            return pcm.array();
+        }
+
+        @Override
+        public void close() {
+            decoder.close();
         }
     }
 }

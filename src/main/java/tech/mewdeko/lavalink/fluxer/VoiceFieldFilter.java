@@ -24,6 +24,8 @@ import java.util.regex.Pattern;
 @Component
 public class VoiceFieldFilter extends OncePerRequestFilter {
 
+    private static final String FLUXER_ENDPOINT = "fluxer";
+
     private static final Pattern PLAYER_PATH = Pattern.compile("^/v4/sessions/[^/]+/players/[^/]+$");
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -45,7 +47,8 @@ public class VoiceFieldFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (node instanceof ObjectNode object && object.remove("voice") != null) {
+        if (node instanceof ObjectNode object && FLUXER_ENDPOINT.equals(object.path("voice").path("endpoint").asText(null))) {
+            object.remove("voice");
             body = MAPPER.writeValueAsBytes(object);
         }
 
